@@ -48,7 +48,8 @@ def validate_inputs(run_id, artifact_name, history, archive_hash):
     checksum(archive_hash)
 
 
-def select_artifact(run, artifacts, run_id, artifact_name, archive_hash, *, workflow_path=WORKFLOW_PATH, events=('workflow_dispatch',), automatic=False):
+def select_artifact(run, artifacts, run_id, artifact_name, archive_hash, *, workflow_path=WORKFLOW_PATH, events=('workflow_dispatch',), automatic=False, artifact_prefix='automatic'):
+    if artifact_prefix not in ('automatic','preflight'): raise ValueError('Invalid artifact mode')
     if (run.get('id') != int(run_id) or run.get('repository', {}).get('id') != REPOSITORY_ID
             or run.get('head_repository', {}).get('id') != REPOSITORY_ID
             or run.get('path') != workflow_path or run.get('head_branch') != 'main'
@@ -58,7 +59,7 @@ def select_artifact(run, artifacts, run_id, artifact_name, archive_hash, *, work
     head = run.get('head_sha', '')
     if not re.fullmatch('[0-9a-f]{40}', head):
         raise ValueError('Invalid source commit')
-    expected_name = f'automatic-site-{run_id}-{head}' if automatic else f'static-site-preview-{head}'
+    expected_name = f'{artifact_prefix}-site-{run_id}-{head}' if automatic else f'static-site-preview-{head}'
     if artifact_name != expected_name:
         raise ValueError('Artifact name does not match the source commit')
     matches = [a for a in artifacts if a.get('name') == artifact_name]

@@ -16,6 +16,8 @@ def git(*args, env=None):
 def record(site,previous,token):
     if previous and (len(previous)!=40 or any(c not in '0123456789abcdef' for c in previous)): raise ValueError('Invalid state lease')
     manifest=read_json(Path(site)/'data/generation.json')
+    if manifest.get('release',{}).get('mode')!='production':
+        raise ValueError('Preflight/legacy artifacts cannot write an automatic receipt')
     verify_site(site,manifest['history_sha256'],automatic=True)
     verify_contract(site,manifest)
     with tempfile.TemporaryDirectory() as tmp:

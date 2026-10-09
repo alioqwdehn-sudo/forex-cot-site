@@ -5,6 +5,11 @@ static artifact from `alioqwdehn-sudo/forex-cot-platform`. It contains publishin
 automation, an independently implemented public verifier, and synthetic tests.
 It does not contain the private application or its raw history.
 
+Deployment uses a single-owner model: `source-artifact` and `github-pages` remain
+restricted to `main` where supported, with no required environment reviewers.
+The owner reviews the artifact and hashes before explicitly authorizing a manual
+release. All integrity checks and disabled-by-default publication guards remain.
+
 **Prepared only: do not merge or deploy until reviewed.** Pages Source is already
 GitHub Actions. No workflow dispatch, secret creation, environment setup, or
 publication is part of this change. Merging does not publish a site.

@@ -4,9 +4,10 @@ import json
 import math
 import struct
 
-# Intentionally empty until a separately reviewed activation commit is known.
+# Reviewed source revision for manual, read-only preflight verification.
+# Production activation changes the source SHA and requires separate approval.
 # Never resolve a branch/tag or accept a workflow input as approval.
-APPROVED_SOURCE_COMMITS = frozenset()
+APPROVED_SOURCE_COMMITS = frozenset({'ceb6d3485481d26968a0fd348c6f78828593c545'})
 BASELINE_ROWS = 91
 BASELINE_FINGERPRINTS = {
     'AUD':'bc96e63b943158796d2ec49c9fcf873949cf9941cffaaf77bd6e3be33c82015a',

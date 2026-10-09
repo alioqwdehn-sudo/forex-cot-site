@@ -53,6 +53,39 @@ def artifact(r,*,preflight=False,expired=False):
                        'head_repository_id':download.REPOSITORY_ID,'head_sha':r['head_sha']}}
 
 
+class ReviewedSourcePolicyTests(unittest.TestCase):
+    APPROVED_SHA = 'ceb6d3485481d26968a0fd348c6f78828593c545'
+
+    def test_only_exact_reviewed_source_commit_is_approved(self):
+        self.assertIsInstance(policy.APPROVED_SOURCE_COMMITS, frozenset)
+        self.assertEqual(policy.APPROVED_SOURCE_COMMITS, frozenset({self.APPROVED_SHA}))
+        self.assertEqual(len(self.APPROVED_SHA), 40)
+        self.assertTrue(auto.trusted_run(run(sha=self.APPROVED_SHA, preflight=True), preflight=True))
+
+    def test_unapproved_source_revisions_and_refs_fail_closed(self):
+        for sha in ('a'*40, '0'*40, self.APPROVED_SHA[:-1]+'6',
+                    self.APPROVED_SHA.upper(), self.APPROVED_SHA[:-1],
+                    'main', 'refs/heads/main', ''):
+            with self.subTest(sha=sha):
+                candidate=run(sha=sha, preflight=True)
+                self.assertFalse(auto.trusted_run(candidate, preflight=True))
+                with self.assertRaisesRegex(ValueError, 'not explicitly approved'):
+                    auto.release_decision(Path('unused'), candidate, preflight=True)
+        with patch.object(download, 'api_json', return_value={'workflow_runs':[run(sha='a'*40)]}) as api:
+            self.assertIsNone(auto.poll('synthetic'))
+            self.assertEqual(api.call_count, 1)  # No unapproved artifact is requested.
+
+    def test_sha_approval_does_not_replace_preflight_provenance_checks(self):
+        candidate=run(sha=self.APPROVED_SHA, preflight=True)
+        for key, value in (('head_branch','feature'), ('path',auto.WORKFLOW),
+                           ('event','schedule'), ('status','in_progress'),
+                           ('conclusion','failure'), ('repository',{'id':0}),
+                           ('head_repository',{'id':0})):
+            with self.subTest(key=key):
+                self.assertFalse(auto.trusted_run(dict(candidate, **{key:value}), preflight=True))
+        self.assertFalse(auto.trusted_run(candidate))  # Preflight cannot enter production.
+
+
 class PollingTests(unittest.TestCase):
     def setUp(self):
         p=patch.object(policy,'APPROVED_SOURCE_COMMITS',frozenset({'a'*40}));p.start();self.addCleanup(p.stop)

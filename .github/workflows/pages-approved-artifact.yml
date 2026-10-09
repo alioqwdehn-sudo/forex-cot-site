@@ -1,0 +1,85 @@
+name: Publish approved static artifact (manual)
+run-name: Reviewed Forex COT Pages publication
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Approved successful private static-pages.yml main run ID
+        type: string
+        required: true
+      artifact_name:
+        description: Exact approved static-site-preview-COMMIT_SHA artifact name
+        type: string
+        required: true
+      expected_history_sha256:
+        description: Explicitly reviewed history SHA-256 (must match repository policy)
+        type: string
+        required: true
+      approved_artifact_sha256:
+        description: Independently reviewed artifact ZIP SHA-256 (without sha256 prefix)
+        type: string
+        required: true
+      publish:
+        description: Explicit authorization to upload the verified public artifact and deploy
+        type: boolean
+        required: true
+        default: false
+
+permissions: {}
+concurrency:
+  group: approved-pages-artifact
+  cancel-in-progress: false
+
+jobs:
+  artifact:
+    if: >-
+      ${{ github.repository == 'alioqwdehn-sudo/forex-cot-site' &&
+          github.ref == 'refs/heads/main' && inputs.publish &&
+          vars.PAGES_PUBLISH_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    environment: source-artifact
+    steps:
+      - name: Check out public verifier only
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Retrieve and verify the exact approved private artifact
+        env:
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          ARTIFACT_NAME: ${{ inputs.artifact_name }}
+          EXPECTED_HISTORY_SHA256: ${{ inputs.expected_history_sha256 }}
+          APPROVED_ARTIFACT_SHA256: ${{ inputs.approved_artifact_sha256 }}
+          COT_SOURCE_READ_TOKEN: ${{ secrets.COT_SOURCE_READ_TOKEN }}
+        run: python3 -E -s scripts/download_approved_artifact.py
+      - name: Recheck static inventory before upload
+        env:
+          EXPECTED_HISTORY_SHA256: ${{ inputs.expected_history_sha256 }}
+        run: python3 scripts/verify_static_site.py --site site --expected-history-sha256 "$EXPECTED_HISTORY_SHA256"
+      - name: Upload only the verified static directory
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: site
+          retention-days: 1
+  deploy:
+    if: >-
+      ${{ github.repository == 'alioqwdehn-sudo/forex-cot-site' &&
+          github.ref == 'refs/heads/main' && inputs.publish &&
+          vars.PAGES_PUBLISH_ENABLED == 'true' }}
+    needs: artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy reviewed static artifact
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

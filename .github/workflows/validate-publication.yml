@@ -17,8 +17,9 @@ jobs:
           persist-credentials: false
       - name: Parse workflow YAML
         run: |
-          ruby -e 'require "yaml"; ARGV.each { |path| YAML.parse_file(path); puts "Parsed #{path}" }' .github/workflows/*.yml
+          ruby -e 'require "yaml"; ARGV.each { |path| YAML.parse_file(path); puts "Parsed #{path}" }' .github/workflows/*.yml deploy/automation/*.yml
       - name: Compile public Python scripts
-        run: python3 -m py_compile scripts/verify_static_site.py scripts/download_approved_artifact.py tests/test_publication.py
+        run: python3 -m compileall -q scripts tests
       - name: Run synthetic security tests without credentials
         run: python3 -m unittest discover -s tests -v
+

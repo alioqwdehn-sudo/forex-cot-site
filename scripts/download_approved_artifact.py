@@ -8,7 +8,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from verify_static_site import APPROVED_HISTORY, MAX_BYTES, checksum, extract_verified_archive, sha256
+from verify_static_site import MANUAL_APPROVED_HISTORY, MAX_BYTES, checksum, extract_verified_archive, sha256
 
 REPOSITORY = 'alioqwdehn-sudo/forex-cot-platform'
 REPOSITORY_ID = 1410262806
@@ -43,20 +43,23 @@ def validate_inputs(run_id, artifact_name, history, archive_hash):
         raise ValueError('A numeric source run ID is required')
     if not re.fullmatch(r'static-site-preview-[0-9a-f]{40}', artifact_name):
         raise ValueError('An exact static preview artifact name is required')
-    if checksum(history) != APPROVED_HISTORY:
+    if checksum(history) != MANUAL_APPROVED_HISTORY:
         raise ValueError('History is not approved')
     checksum(archive_hash)
 
 
-def select_artifact(run, artifacts, run_id, artifact_name, archive_hash):
+def select_artifact(run, artifacts, run_id, artifact_name, archive_hash, *, workflow_path=WORKFLOW_PATH, events=('workflow_dispatch',), automatic=False):
     if (run.get('id') != int(run_id) or run.get('repository', {}).get('id') != REPOSITORY_ID
             or run.get('head_repository', {}).get('id') != REPOSITORY_ID
-            or run.get('path') != WORKFLOW_PATH or run.get('head_branch') != 'main'
-            or run.get('event') != 'workflow_dispatch' or run.get('status') != 'completed'
+            or run.get('path') != workflow_path or run.get('head_branch') != 'main'
+            or run.get('event') not in events or run.get('status') != 'completed'
             or run.get('conclusion') != 'success'):
         raise ValueError('Source run provenance or status is invalid')
     head = run.get('head_sha', '')
-    if artifact_name != f'static-site-preview-{head}':
+    if not re.fullmatch('[0-9a-f]{40}', head):
+        raise ValueError('Invalid source commit')
+    expected_name = f'automatic-site-{run_id}-{head}' if automatic else f'static-site-preview-{head}'
+    if artifact_name != expected_name:
         raise ValueError('Artifact name does not match the source commit')
     matches = [a for a in artifacts if a.get('name') == artifact_name]
     if len(matches) != 1:
@@ -134,3 +137,4 @@ if __name__ == '__main__':
         main()
     except Exception:
         raise SystemExit('Approved artifact retrieval or verification failed; nothing was uploaded.') from None
+

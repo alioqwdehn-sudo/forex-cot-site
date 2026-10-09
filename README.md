@@ -1,5 +1,8 @@
 # Forex COT Dashboard V4 — public publishing repository
 
+The proposed unattended path is documented in [docs/AUTOMATION.md](docs/AUTOMATION.md).
+Its workflow is an inactive template; the manual fallback remains unchanged.
+
 This repository prepares manual GitHub Pages delivery of a separately reviewed
 static artifact from `alioqwdehn-sudo/forex-cot-platform`. It contains publishing
 automation, an independently implemented public verifier, and synthetic tests.

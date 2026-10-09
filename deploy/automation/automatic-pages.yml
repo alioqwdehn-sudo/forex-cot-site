@@ -1,0 +1,103 @@
+# INACTIVE TEMPLATE. Copy to .github/workflows/automatic-pages.yml after review.
+name: Automatic verified COT Pages
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Run supplied automatically by the fixed private source relay
+        type: string
+        required: true
+permissions: {}
+# Shares the manual fallback's lock: no partial concurrent releases.
+concurrency:
+  group: approved-pages-artifact
+  cancel-in-progress: false
+jobs:
+  artifact:
+    if: >-
+      ${{ github.repository == 'alioqwdehn-sudo/forex-cot-site' && github.ref == 'refs/heads/main' &&
+          vars.COT_AUTOMATION_READY == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: automatic-source
+    permissions:
+      contents: read
+    outputs:
+      publish: ${{ steps.verify.outputs.publish }}
+      previous_head: ${{ steps.state.outputs.head }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Mint source Actions read token for this retrieval only
+        id: installation
+        if: vars.COT_SOURCE_APP_ID != ''
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.COT_SOURCE_APP_ID }}
+          private-key: ${{ secrets.COT_SOURCE_APP_PRIVATE_KEY }}
+          owner: alioqwdehn-sudo
+          repositories: forex-cot-platform
+          permission-actions: read
+      - name: Retrieve one trusted completed artifact; verify full history and replay policy
+        id: verify
+        env:
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          COT_SOURCE_READ_TOKEN: ${{ steps.installation.outputs.token || secrets.COT_SOURCE_READ_TOKEN }}
+        run: python3 -E -s scripts/automatic_publication.py
+      - id: state
+        if: steps.verify.outputs.publish == 'true'
+        run: echo "head=$(cat state-head)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: steps.verify.outputs.publish == 'true'
+        with:
+          name: verified-site-${{ github.run_id }}
+          path: site
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+      - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        if: steps.verify.outputs.publish == 'true'
+        with:
+          path: site
+          retention-days: 1
+      - if: failure()
+        run: echo '::error::Automatic verification failed; nothing uploaded or deployed. Check private artifact permissions, run provenance, checksums, lineage and published state.'
+  deploy:
+    needs: artifact
+    if: needs.artifact.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+  receipt:
+    needs: [artifact,deploy]
+    if: needs.artifact.outputs.publish == 'true' && needs.deploy.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: verified-site-${{ github.run_id }}
+          path: site
+      - name: Commit a data-only receipt after successful deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_STATE_HEAD: ${{ needs.artifact.outputs.previous_head }}
+        run: python3 scripts/record_publication.py
+      - if: failure()
+        run: echo '::error::Receipt reconciliation failed after deployment. Retry the same trusted release; do not append or roll back private history.'

@@ -1,6 +1,9 @@
 # GitHub Free public polling — inactive proposal
 
-All new workflows remain templates under deploy/automation. No schedules,
+Only the explicitly authorized verification-only preflight is prepared at
+`.github/workflows/automatic-preflight.yml`, byte-identical to its template under
+`deploy/automation`. Production automatic-pages.yml remains an inactive template;
+no production schedules are activated. No preflight has been dispatched and no
 secrets, settings, readiness flags or deployments are changed. Keep
 COT_AUTOMATION_READY=false until separate owner authorization.
 

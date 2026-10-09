@@ -1,0 +1,37 @@
+# INACTIVE TEMPLATE. Dispatch-only independent verification; no deployment jobs.
+name: COT public verification preflight
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Completed read-only source preflight run ID
+        type: string
+        required: true
+permissions: {}
+jobs:
+  verify:
+    if: github.repository == 'alioqwdehn-sudo/forex-cot-site' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: automatic-source
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - id: installation
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.COT_SOURCE_APP_ID }}
+          private-key: ${{ secrets.COT_SOURCE_APP_PRIVATE_KEY }}
+          owner: alioqwdehn-sudo
+          repositories: forex-cot-platform
+          permission-actions: read
+      - env:
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          COT_SOURCE_READ_TOKEN: ${{ steps.installation.outputs.token }}
+        run: python3 -E -s scripts/automatic_publication.py --preflight
+      - if: failure()
+        run: echo '::error::Verification-only preflight failed; no publishing or receipts permitted.'

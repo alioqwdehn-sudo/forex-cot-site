@@ -166,8 +166,12 @@ class AutomaticTests(unittest.TestCase):
         self.assertTrue(calls[-1][1].endswith('b'*40))
         self.assertFalse(any('synthetic-token' in str(c) for c in calls))
 
-    def test_no_new_active_workflow_or_weekly_page_variable_dependency(self):
+    def test_only_authorized_preflight_added_and_production_stays_inactive(self):
         root=Path(__file__).resolve().parents[1]
+        self.assertEqual({p.name for p in (root/'.github/workflows').glob('*.yml')},
+            {'pages-approved-artifact.yml','validate-publication.yml','automatic-preflight.yml'})
+        self.assertEqual((root/'.github/workflows/automatic-preflight.yml').read_bytes(),
+            (root/'deploy/automation/automatic-preflight.yml').read_bytes())
         self.assertFalse((root/'.github/workflows/automatic-pages.yml').exists())
         text=(root/'deploy/automation/automatic-pages.yml').read_text()
         self.assertIn('# INACTIVE TEMPLATE',text)

@@ -165,10 +165,28 @@ class IndependentOfficialTests(unittest.TestCase):
 class PreflightTests(unittest.TestCase):
     def test_public_preflight_has_no_deploy_receipt_or_write_job(self):
         root=Path(__file__).resolve().parents[1]
-        text=(root/'deploy/automation/automatic-preflight.yml').read_text()
-        for forbidden in ('contents: write','pages:','id-token:','deploy-pages','upload-pages','record_publication','schedule:'):
-            self.assertNotIn(forbidden,text)
-        self.assertIn('--preflight',text);self.assertIn('environment: automatic-source',text)
+        template=(root/'deploy/automation/automatic-preflight.yml').read_bytes()
+        active=(root/'.github/workflows/automatic-preflight.yml').read_bytes()
+        self.assertEqual(active,template)
+        for workflow in (template,active):
+            text=workflow.decode('utf-8')
+            for forbidden in ('contents: write','pages:','id-token:','deploy-pages','upload-pages',
+                              'upload-artifact','record_publication','schedule:','push:',
+                              'pull_request:','workflow_run:','repository_dispatch:',
+                              'permission-actions: write','permission-contents:',
+                              'COT_AUTOMATION_READY','git push','--poll'):
+                self.assertNotIn(forbidden,text)
+            self.assertIn('on:\n  workflow_dispatch:\n',text)
+            self.assertIn('permissions: {}',text)
+            self.assertIn('contents: read',text)
+            self.assertIn("github.ref == 'refs/heads/main'",text)
+            self.assertIn('environment: automatic-source',text)
+            self.assertIn('repositories: forex-cot-platform',text)
+            self.assertIn('permission-actions: read',text)
+            self.assertIn('app-id: ${{ vars.COT_SOURCE_APP_ID }}',text)
+            self.assertIn('private-key: ${{ secrets.COT_SOURCE_APP_PRIVATE_KEY }}',text)
+            self.assertIn('COT_SOURCE_READ_TOKEN: ${{ steps.installation.outputs.token }}',text)
+            self.assertIn('run: python3 -E -s scripts/automatic_publication.py --preflight',text)
         production=(root/'deploy/automation/automatic-pages.yml').read_text()
         self.assertIn('schedule:',production);self.assertNotIn('inputs.source_run_id',production)
         self.assertNotIn('secrets.COT_SOURCE_READ_TOKEN',production)

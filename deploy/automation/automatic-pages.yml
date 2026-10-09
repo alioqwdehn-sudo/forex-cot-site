@@ -1,12 +1,10 @@
 # INACTIVE TEMPLATE. Copy to .github/workflows/automatic-pages.yml after review.
-name: Automatic verified COT Pages
+name: Poll and publish verified COT Pages
 on:
   workflow_dispatch:
-    inputs:
-      source_run_id:
-        description: Run supplied automatically by the fixed private source relay
-        type: string
-        required: true
+  schedule:
+    - cron: '11 * * * 5,6,0,1,2'
+    - cron: '11 9 * * 3,4'
 permissions: {}
 # Shares the manual fallback's lock: no partial concurrent releases.
 concurrency:
@@ -32,7 +30,6 @@ jobs:
           sparse-checkout: scripts
       - name: Mint source Actions read token for this retrieval only
         id: installation
-        if: vars.COT_SOURCE_APP_ID != ''
         uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
         with:
           app-id: ${{ vars.COT_SOURCE_APP_ID }}
@@ -40,11 +37,10 @@ jobs:
           owner: alioqwdehn-sudo
           repositories: forex-cot-platform
           permission-actions: read
-      - name: Retrieve one trusted completed artifact; verify full history and replay policy
+      - name: Poll trusted source artifacts and independently verify CFTC rows
         id: verify
         env:
-          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
-          COT_SOURCE_READ_TOKEN: ${{ steps.installation.outputs.token || secrets.COT_SOURCE_READ_TOKEN }}
+          COT_SOURCE_READ_TOKEN: ${{ steps.installation.outputs.token }}
         run: python3 -E -s scripts/automatic_publication.py
       - id: state
         if: steps.verify.outputs.publish == 'true'
@@ -66,7 +62,7 @@ jobs:
         run: echo '::error::Automatic verification failed; nothing uploaded or deployed. Check private artifact permissions, run provenance, checksums, lineage and published state.'
   deploy:
     needs: artifact
-    if: needs.artifact.outputs.publish == 'true'
+    if: needs.artifact.outputs.publish == 'true' && vars.COT_AUTOMATION_READY == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -80,7 +76,7 @@ jobs:
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
   receipt:
     needs: [artifact,deploy]
-    if: needs.artifact.outputs.publish == 'true' && needs.deploy.result == 'success'
+    if: needs.artifact.outputs.publish == 'true' && needs.deploy.result == 'success' && vars.COT_AUTOMATION_READY == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

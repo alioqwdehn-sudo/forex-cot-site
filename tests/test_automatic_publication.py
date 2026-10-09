@@ -13,6 +13,7 @@ import automatic_publication as auto
 import download_approved_artifact as downloader
 import record_publication
 import verify_static_site as verifier
+import source_policy
 
 
 def fixture(root,weeks=92):
@@ -46,6 +47,7 @@ def fixture(root,weeks=92):
     chain=[verifier.APPROVED_HISTORY]+[f'{i:064x}' for i in range(1,weeks-90)]
     manifest={'format':1,'history_sha256':chain[-1],'record_count':10*weeks,'inventory':inventory,'files':files,
         'assets':{name:verifier.sha256(raw) for name,raw in assets.items()},'release':{
+        'mode':'production',
         'source_repository_id':downloader.REPOSITORY_ID,'source_workflow':auto.WORKFLOW,'source_run_id':123,'source_head_sha':'a'*40,
         'anchor_history_sha256':verifier.APPROVED_HISTORY,'previous_history_sha256':chain[-2],'chain':chain,
         'official_sha256':'b'*64,'mirror_commit':'c'*40,'report_date':inventory['EUR']['latest_date']}}
@@ -70,6 +72,15 @@ class AutomaticTests(unittest.TestCase):
         self.asset_policy=patch.object(auto,'APPROVED_ASSETS',dict(self.manifest['assets']))
         self.asset_policy.start();self.addCleanup(self.asset_policy.stop)
         self.run={'id':123,'head_sha':'a'*40}
+        approval=patch.object(source_policy,'APPROVED_SOURCE_COMMITS',frozenset({'a'*40}))
+        approval.start();self.addCleanup(approval.stop)
+        baseline={c:source_policy.fingerprint(auto.read_json(self.site/f'data/cot/{c}.json')['data'][-91:]) for c in verifier.CURRENCIES}
+        policy=patch.object(source_policy,'BASELINE_FINGERPRINTS',baseline)
+        policy.start();self.addCleanup(policy.stop)
+        # Contract/ZIP tests isolate networking. Independent official verification
+        # has its own tests below using raw CFTC-shaped synthetic rows.
+        official=patch.object(auto.official_cftc,'verify_new_rows')
+        official.start();self.addCleanup(official.stop)
 
     def test_new_release_exact_inventory_and_manual_policy_unchanged(self):
         self.assertTrue(auto.release_decision(self.site,self.run))
@@ -91,10 +102,10 @@ class AutomaticTests(unittest.TestCase):
         update_response(future,manifest,'cot/EUR.json',payload)
         pair=auto.read_json(future/'data/pair/EUR-USD.json');pair['data']=payload['data']
         update_response(future,manifest,'pair/EUR-USD.json',pair)
-        with self.assertRaisesRegex(ValueError,'rewritten'):auto.release_decision(future,self.run,previous_site=self.site)
+        with self.assertRaisesRegex(ValueError,'rewritten|fingerprint'):auto.release_decision(future,self.run,previous_site=self.site)
 
     def test_reject_forged_provenance_or_growth(self):
-        for key,value in [('source_repository_id',999),('source_workflow','other.yml'),('source_run_id',999),('source_head_sha','b'*40),
+        for key,value in [('mode','preflight'),('source_repository_id',999),('source_workflow','other.yml'),('source_run_id',999),('source_head_sha','b'*40),
                           ('anchor_history_sha256','0'*64),('previous_history_sha256','0'*64),('official_sha256','invalid'),('report_date','2026-01-01')]:
             manifest=copy.deepcopy(self.manifest);manifest['release'][key]=value;write_manifest(self.site,manifest)
             with self.subTest(key=key),self.assertRaises(ValueError):auto.release_decision(self.site,self.run)
@@ -106,6 +117,17 @@ class AutomaticTests(unittest.TestCase):
         write_manifest(self.site,self.manifest)
         # The approved policy is immutable, independent from mutable manifest.
         with self.assertRaisesRegex(ValueError,'Frontend'):auto.release_decision(self.site,self.run)
+
+    def test_unapproved_commit_and_preflight_cannot_authorize_production_or_receipt(self):
+        with self.assertRaisesRegex(ValueError,'explicitly approved'):
+            auto.release_decision(self.site,dict(self.run,head_sha='b'*40))
+        self.manifest['release'].update(mode='preflight',source_workflow=auto.PREFLIGHT_WORKFLOW)
+        write_manifest(self.site,self.manifest)
+        with self.assertRaisesRegex(ValueError,'provenance'):auto.release_decision(self.site,self.run)
+        self.assertTrue(auto.release_decision(self.site,self.run,preflight=True))
+        with patch.object(record_publication,'git') as git:
+            with self.assertRaisesRegex(ValueError,'cannot write'):record_publication.record(self.site,'','synthetic')
+            git.assert_not_called()
 
     def test_reject_nonfinite_duplicate_gapped_partial_and_wrong_pair(self):
         for mutation in ('nan','duplicate','gap','partial','pair'):

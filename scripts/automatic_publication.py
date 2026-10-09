@@ -10,9 +10,12 @@ import urllib.error
 import urllib.request
 
 import download_approved_artifact as download
+import source_policy
+import official_cftc
 from verify_static_site import APPROVED_HISTORY, CURRENCIES, FILES, MAX_BYTES, checksum, extract_verified_archive, sha256, unique_object, verify_site
 
 WORKFLOW = '.github/workflows/automatic-weekly.yml'
+PREFLIGHT_WORKFLOW = '.github/workflows/automatic-preflight.yml'
 SITE_REPO = 'alioqwdehn-sudo/forex-cot-site'
 STATE_BRANCH = 'automatic-published'
 APPROVED_ASSETS = {
@@ -83,15 +86,19 @@ def verify_contract(site, manifest):
         raise ValueError('Health contract mismatch')
 
 
-def release_decision(site, run, *, previous_site=None):
+def release_decision(site, run, *, previous_site=None, preflight=False):
+    if run.get('head_sha') not in source_policy.APPROVED_SOURCE_COMMITS:
+        raise ValueError('Source commit is not explicitly approved')
     generation=read_json(Path(site)/'data/generation.json')
     verify_site(site,generation['history_sha256'],automatic=True)
     if generation.get('assets')!=APPROVED_ASSETS:
         raise ValueError('Frontend assets changed; explicit code review required')
     verify_contract(site,generation)
+    source_policy.verify_baseline(Path(site),read_json,CURRENCIES)
     release=generation.get('release',{})
     chain=release.get('chain')
-    if (release.get('source_repository_id')!=download.REPOSITORY_ID or release.get('source_workflow')!=WORKFLOW
+    if (release.get('mode')!=('preflight' if preflight else 'production') or
+        release.get('source_repository_id')!=download.REPOSITORY_ID or release.get('source_workflow')!=(PREFLIGHT_WORKFLOW if preflight else WORKFLOW)
         or release.get('source_run_id')!=run['id'] or release.get('source_head_sha')!=run['head_sha']
         or release.get('anchor_history_sha256')!=APPROVED_HISTORY): raise ValueError('Release provenance mismatch')
     if not isinstance(chain,list) or len(chain)<2 or chain[0]!=APPROVED_HISTORY or chain[-1]!=generation['history_sha256'] or len(set(chain))!=len(chain):
@@ -109,6 +116,8 @@ def release_decision(site, run, *, previous_site=None):
         previous=read_json(Path(previous_site)/'data/generation.json')
         verify_site(previous_site,previous['history_sha256'],automatic=True)
         verify_contract(previous_site,previous)
+        source_policy.verify_baseline(Path(previous_site),read_json,CURRENCIES)
+        if previous.get('assets')!=APPROVED_ASSETS: raise ValueError('Previously published frontend policy changed')
     oldhash=previous['history_sha256']
     if oldhash==generation['history_sha256']: return False
     if oldhash not in chain[:-1]: raise ValueError('Stale, unrelated or rollback release rejected')
@@ -122,6 +131,7 @@ def release_decision(site, run, *, previous_site=None):
             oldrows=read_json(Path(previous_site)/f'data/cot/{c}.json')['data']
             newrows=read_json(Path(site)/f'data/cot/{c}.json')['data']
             if newrows[weeks:]!=oldrows: raise ValueError('Previously published history was rewritten')
+    official_cftc.verify_new_rows(Path(site),read_json,Path(previous_site) if previous_site else None)
     return True
 
 
@@ -151,20 +161,57 @@ def get_previous(destination):
     return head
 
 
-def main():
-    run_id=os.environ.get('SOURCE_RUN_ID','')
-    if not re.fullmatch('[1-9][0-9]{0,19}',run_id): raise ValueError('Invalid run ID')
+def trusted_run(run,*,preflight=False):
+    return (run.get('repository',{}).get('id')==download.REPOSITORY_ID and
+            run.get('head_repository',{}).get('id')==download.REPOSITORY_ID and
+            run.get('path')==(PREFLIGHT_WORKFLOW if preflight else WORKFLOW) and
+            run.get('head_branch')=='main' and run.get('event') in (('workflow_dispatch',) if preflight else ('schedule','workflow_dispatch')) and
+            run.get('status')=='completed' and run.get('conclusion')=='success' and
+            run.get('head_sha') in source_policy.APPROVED_SOURCE_COMMITS)
+
+
+def poll(token):
+    if not source_policy.APPROVED_SOURCE_COMMITS: raise ValueError('No reviewed source commit is approved')
+    # Bounded pagination includes successful no-op runs without hiding an older
+    # recoverable artifact. Latest trusted artifact first; receipts prevent replay.
+    for page in range(1,6):
+        runs=download.api_json(f'{download.API}/workflows/automatic-weekly.yml/runs?branch=main&status=success&per_page=100&page={page}',token)['workflow_runs']
+        for run in runs:
+            if not trusted_run(run): continue
+            artifacts=download.api_json(f"{download.API}/runs/{run['id']}/artifacts?per_page=100",token)
+            name=f"automatic-site-{run['id']}-{run['head_sha']}"
+            matches=[a for a in artifacts['artifacts'] if a.get('name')==name and a.get('expired') is False]
+            if not matches: continue
+            if len(matches)!=1 or artifacts['total_count']>100: raise ValueError('Ambiguous polled artifacts')
+            archive_hash=checksum(matches[0].get('digest','').removeprefix('sha256:'))
+            download.select_artifact(run,artifacts['artifacts'],str(run['id']),name,archive_hash,
+                workflow_path=WORKFLOW,events=('schedule','workflow_dispatch'),automatic=True)
+            return str(run['id'])
+        if len(runs)<100: break
+    return None
+
+
+def execute(*,preflight=False):
     token=os.environ.pop('COT_SOURCE_READ_TOKEN','')
     if not token: raise ValueError('Missing source Actions read credential')
+    run_id=os.environ.get('SOURCE_RUN_ID','') if preflight else poll(token)
+    if run_id is None:
+        with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as f: f.write('publish=false\n')
+        print('No recoverable approved production artifact; nothing published.')
+        return
+    if not re.fullmatch('[1-9][0-9]{0,19}',run_id): raise ValueError('Invalid run ID')
     run=download.api_json(f'{download.API}/runs/{run_id}',token)
+    if not trusted_run(run,preflight=preflight): raise ValueError('Unapproved source run')
     artifacts=download.api_json(f'{download.API}/runs/{run_id}/artifacts?per_page=100',token)
-    name=f"automatic-site-{run_id}-{run.get('head_sha','')}"
+    prefix='preflight' if preflight else 'automatic'
+    name=f"{prefix}-site-{run_id}-{run.get('head_sha','')}"
     matches=[a for a in artifacts['artifacts'] if a.get('name')==name]
     if len(matches)!=1 or artifacts['total_count']>100: raise ValueError('Ambiguous release artifact')
     archive_hash=matches[0].get('digest','').removeprefix('sha256:')
     checksum(archive_hash)
     selected=download.select_artifact(run,artifacts['artifacts'],run_id,name,archive_hash,
-        workflow_path=WORKFLOW,events=('schedule','workflow_dispatch'),automatic=True)
+        workflow_path=PREFLIGHT_WORKFLOW if preflight else WORKFLOW,
+        events=('workflow_dispatch',) if preflight else ('schedule','workflow_dispatch'),automatic=True,artifact_prefix=prefix)
     with tempfile.TemporaryDirectory() as tmp:
         archive=Path(tmp)/'release.zip'
         download.download_archive(selected['id'],token,archive)
@@ -179,10 +226,20 @@ def main():
         extract_verified_archive(archive,Path('site'),archive_hash,checksum(generation['history_sha256']),automatic=True)
         previous=Path(tmp)/'previous'
         head=get_previous(previous)
-        publish=release_decision('site',run,previous_site=previous if head else None)
+        publish=release_decision('site',run,previous_site=previous if head else None,preflight=preflight)
+        if preflight: publish=False
     Path('state-head').write_text(head)
     with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as f: f.write(f"publish={'true' if publish else 'false'}\n")
-    print('Verified new complete release.' if publish else 'Already published; no upload or deployment.')
+    print('Preflight verified; no publishing permitted.' if preflight else
+          ('Verified new complete release.' if publish else 'Already published; no upload or deployment.'))
+
+
+def main():
+    import argparse
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--preflight',action='store_true')
+    args=parser.parse_args()
+    execute(preflight=args.preflight)
 
 
 if __name__=='__main__':

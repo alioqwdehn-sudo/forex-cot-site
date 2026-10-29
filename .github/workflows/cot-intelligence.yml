@@ -24,7 +24,6 @@ jobs:
         with:
           node-version: '22'
       - name: Refresh all seven official CFTC series
-        if: github.event_name != 'push'
         run: node cot-intelligence/update.mjs
       - name: Validate calculations and build website
         run: node cot-intelligence/build.mjs

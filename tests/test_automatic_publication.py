@@ -169,9 +169,14 @@ class AutomaticTests(unittest.TestCase):
     def test_only_authorized_preflight_added_and_production_stays_inactive(self):
         root=Path(__file__).resolve().parents[1]
         self.assertEqual({p.name for p in (root/'.github/workflows').glob('*.yml')},
-            {'pages-approved-artifact.yml','validate-publication.yml','automatic-preflight.yml'})
+            {'pages-approved-artifact.yml','validate-publication.yml','automatic-preflight.yml','cot-intelligence.yml'})
         self.assertEqual((root/'.github/workflows/automatic-preflight.yml').read_bytes(),
             (root/'deploy/automation/automatic-preflight.yml').read_bytes())
+        public=(root/'.github/workflows/cot-intelligence.yml').read_text()
+        self.assertIn('node cot-intelligence/update.mjs',public)
+        self.assertIn('path: cot-intelligence/site',public)
+        self.assertNotIn('secrets.',public)
+        self.assertNotIn('COT_SOURCE_READ_TOKEN',public)
         self.assertFalse((root/'.github/workflows/automatic-pages.yml').exists())
         text=(root/'deploy/automation/automatic-pages.yml').read_text()
         self.assertIn('# INACTIVE TEMPLATE',text)

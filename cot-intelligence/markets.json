@@ -1,0 +1,128 @@
+{
+  "EURUSD": {
+    "symbol": "EUR/USD",
+    "name": "Euro FX",
+    "icon": "\u20ac/$",
+    "code": "099741",
+    "dataset": "gpe5-46if",
+    "tv": "OANDA:EURUSD",
+    "report": "TFF Futures Only",
+    "group1": "Leveraged Funds",
+    "group2": "Asset Managers",
+    "exchange": "CME",
+    "fields": [
+      "lev_money_positions_long",
+      "lev_money_positions_short",
+      "asset_mgr_positions_long",
+      "asset_mgr_positions_short"
+    ]
+  },
+  "GBPUSD": {
+    "symbol": "GBP/USD",
+    "name": "British Pound",
+    "icon": "\u00a3/$",
+    "code": "096742",
+    "dataset": "gpe5-46if",
+    "tv": "OANDA:GBPUSD",
+    "report": "TFF Futures Only",
+    "group1": "Leveraged Funds",
+    "group2": "Asset Managers",
+    "exchange": "CME",
+    "fields": [
+      "lev_money_positions_long",
+      "lev_money_positions_short",
+      "asset_mgr_positions_long",
+      "asset_mgr_positions_short"
+    ]
+  },
+  "GOLD": {
+    "symbol": "XAU/USD",
+    "name": "Gold",
+    "icon": "Au",
+    "code": "088691",
+    "dataset": "72hh-3qpy",
+    "tv": "OANDA:XAUUSD",
+    "report": "Disaggregated Futures Only",
+    "group1": "Managed Money",
+    "group2": "Other Reportables",
+    "exchange": "COMEX",
+    "fields": [
+      "m_money_positions_long_all",
+      "m_money_positions_short_all",
+      "other_rept_positions_long",
+      "other_rept_positions_short"
+    ]
+  },
+  "DXY": {
+    "symbol": "DXY",
+    "name": "US Dollar Index",
+    "icon": "$",
+    "code": "098662",
+    "dataset": "gpe5-46if",
+    "tv": "TVC:DXY",
+    "report": "TFF Futures Only",
+    "group1": "Leveraged Funds",
+    "group2": "Asset Managers",
+    "exchange": "ICE Futures US",
+    "fields": [
+      "lev_money_positions_long",
+      "lev_money_positions_short",
+      "asset_mgr_positions_long",
+      "asset_mgr_positions_short"
+    ]
+  },
+  "ES": {
+    "symbol": "ES",
+    "name": "E-mini S&P 500",
+    "icon": "S&P",
+    "code": "13874A",
+    "dataset": "gpe5-46if",
+    "tv": "CME_MINI:ES1!",
+    "report": "TFF Futures Only",
+    "group1": "Leveraged Funds",
+    "group2": "Asset Managers",
+    "exchange": "CME",
+    "fields": [
+      "lev_money_positions_long",
+      "lev_money_positions_short",
+      "asset_mgr_positions_long",
+      "asset_mgr_positions_short"
+    ]
+  },
+  "NQ": {
+    "symbol": "NQ",
+    "name": "E-mini Nasdaq 100",
+    "icon": "NQ",
+    "code": "209742",
+    "dataset": "gpe5-46if",
+    "tv": "CME_MINI:NQ1!",
+    "report": "TFF Futures Only",
+    "group1": "Leveraged Funds",
+    "group2": "Asset Managers",
+    "exchange": "CME",
+    "fields": [
+      "lev_money_positions_long",
+      "lev_money_positions_short",
+      "asset_mgr_positions_long",
+      "asset_mgr_positions_short"
+    ]
+  },
+  "SILVER": {
+    "symbol": "XAG/USD",
+    "name": "Silver",
+    "icon": "Ag",
+    "code": "084691",
+    "dataset": "72hh-3qpy",
+    "tv": "OANDA:XAGUSD",
+    "report": "Disaggregated Futures Only",
+    "group1": "Managed Money",
+    "group2": "Other Reportables",
+    "exchange": "COMEX",
+    "fields": [
+      "m_money_positions_long_all",
+      "m_money_positions_short_all",
+      "other_rept_positions_long",
+      "other_rept_positions_short"
+    ]
+  }
+}

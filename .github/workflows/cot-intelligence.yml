@@ -1,0 +1,46 @@
+name: COT Intelligence weekly website
+on:
+  push:
+    branches: [main]
+    paths: ['cot-intelligence/**', '.github/workflows/cot-intelligence.yml']
+  workflow_dispatch:
+  schedule:
+    - cron: '45 21 * * 5'
+    - cron: '45 7 * * 6'
+permissions:
+  contents: read
+concurrency:
+  group: cot-intelligence-pages
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Refresh all seven official CFTC series
+        if: github.event_name != 'push'
+        run: node cot-intelligence/update.mjs
+      - name: Validate calculations and build website
+        run: node cot-intelligence/build.mjs
+      - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b
+        with:
+          path: cot-intelligence/site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e
